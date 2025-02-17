@@ -1566,6 +1566,9 @@ VkResult anv_AllocateMemory(
           dedicated_info->image != VK_NULL_HANDLE) {
          ANV_FROM_HANDLE(anv_image, image, dedicated_info->image);
 
+         if (image->vk.tiling == VK_IMAGE_TILING_DRM_FORMAT_MODIFIER_EXT)
+            alloc_flags |= ANV_BO_ALLOC_SCANOUT;
+
          /* Apply implicit sync to be compatible with clients relying on
           * implicit fencing. This matches the behavior in iris i915_batch
           * submit. An example client is VA-API (iHD), so only dedicated
