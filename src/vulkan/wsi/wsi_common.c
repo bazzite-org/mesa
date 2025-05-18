@@ -219,7 +219,7 @@ wsi_device_init(struct wsi_device *wsi,
 #endif
 
 #ifdef VK_USE_PLATFORM_WAYLAND_KHR
-   result = wsi_wl_init_wsi(wsi, alloc, pdevice);
+   result = wsi_wl_init_wsi(wsi, alloc, pdevice, dri_options);
    if (result != VK_SUCCESS)
       goto fail;
 #endif

@@ -413,7 +413,8 @@ void wsi_x11_finish_wsi(struct wsi_device *wsi_device,
                         const VkAllocationCallbacks *alloc);
 VkResult wsi_wl_init_wsi(struct wsi_device *wsi_device,
                          const VkAllocationCallbacks *alloc,
-                         VkPhysicalDevice physical_device);
+                         VkPhysicalDevice physical_device,
+                         const struct driOptionCache *dri_options);
 void wsi_wl_finish_wsi(struct wsi_device *wsi_device,
                        const VkAllocationCallbacks *alloc);
 VkResult wsi_win32_init_wsi(struct wsi_device *wsi_device,

@@ -70,8 +70,8 @@ static const struct vk_instance_extension_table
 static const driOptionDescription vn_dri_options[] = {
    /* clang-format off */
    DRI_CONF_SECTION_PERFORMANCE
+      DRI_CONF_VK_OVERRIDE_MIN_IMAGE_COUNT(0)
       DRI_CONF_VK_X11_ENSURE_MIN_IMAGE_COUNT(false)
-      DRI_CONF_VK_X11_OVERRIDE_MIN_IMAGE_COUNT(0)
       DRI_CONF_VK_X11_STRICT_IMAGE_COUNT(false)
       DRI_CONF_VK_XWAYLAND_WAIT_READY(true)
       DRI_CONF_VENUS_IMPLICIT_FENCING(false)

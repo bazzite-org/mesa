@@ -103,7 +103,7 @@ nvk_init_debug_flags(struct nvk_instance *instance)
 static const driOptionDescription nvk_dri_options[] = {
    DRI_CONF_SECTION_PERFORMANCE
       DRI_CONF_ADAPTIVE_SYNC(true)
-      DRI_CONF_VK_X11_OVERRIDE_MIN_IMAGE_COUNT(0)
+      DRI_CONF_VK_OVERRIDE_MIN_IMAGE_COUNT(0)
       DRI_CONF_VK_X11_STRICT_IMAGE_COUNT(false)
       DRI_CONF_VK_X11_ENSURE_MIN_IMAGE_COUNT(false)
       DRI_CONF_VK_KHR_PRESENT_WAIT(false)

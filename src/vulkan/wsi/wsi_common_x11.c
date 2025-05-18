@@ -2876,9 +2876,9 @@ wsi_x11_init_wsi(struct wsi_device *wsi_device,
    }
 
    if (dri_options) {
-      if (driCheckOption(dri_options, "vk_x11_override_min_image_count", DRI_INT)) {
+      if (driCheckOption(dri_options, "vk_override_min_image_count", DRI_INT)) {
          wsi_device->x11.override_minImageCount =
-            driQueryOptioni(dri_options, "vk_x11_override_min_image_count");
+            driQueryOptioni(dri_options, "vk_override_min_image_count");
       }
       if (driCheckOption(dri_options, "vk_x11_strict_image_count", DRI_BOOL)) {
          wsi_device->x11.strict_imageCount =

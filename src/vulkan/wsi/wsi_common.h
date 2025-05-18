@@ -209,6 +209,10 @@ struct wsi_device {
    struct {
       /* Don't use the commit-timing protocol for pacing */
       bool disable_timestamps;
+
+      /* Override the minimum number of images on the swapchain.
+       * 0 = no override */
+      double override_minImageCount;
    } wayland;
 
    /*

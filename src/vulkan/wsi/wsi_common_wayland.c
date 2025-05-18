@@ -58,6 +58,7 @@
 #include <util/u_dynarray.h>
 #include <util/anon_file.h>
 #include <util/os_time.h>
+#include <util/xmlconfig.h>
 
 #include <loader/loader_wayland_helper.h>
 
@@ -1684,9 +1685,12 @@ wsi_wl_surface_get_support(VkIcdSurfaceBase *surface,
 #define WSI_WL_DEFAULT_NUM_IMAGES 3
 
 static uint32_t
-wsi_wl_surface_get_min_image_count(struct wsi_wl_display *display,
+wsi_wl_surface_get_min_image_count(struct wsi_device *wsi_device, struct wsi_wl_display *display,
                                    const VkSurfacePresentModeEXT *present_mode)
 {
+   if (wsi_device->wayland.override_minImageCount)
+      return wsi_device->wayland.override_minImageCount;
+
    if (present_mode) {
       return present_mode->presentMode == VK_PRESENT_MODE_MAILBOX_KHR ?
              WSI_WL_BUMPED_NUM_IMAGES : WSI_WL_DEFAULT_NUM_IMAGES;
@@ -1735,7 +1739,7 @@ wsi_wl_surface_get_capabilities(VkIcdSurfaceBase *icd_surface,
       display = &temp_display;
    }
 
-   caps->minImageCount = wsi_wl_surface_get_min_image_count(display, present_mode);
+   caps->minImageCount = wsi_wl_surface_get_min_image_count(wsi_device, display, present_mode);
 
    if (!wsi_wl_surface->display)
       wsi_wl_display_finish(&temp_display);
@@ -3497,7 +3501,7 @@ wsi_wl_surface_create_swapchain(VkIcdSurfaceBase *icd_surface,
       const VkSurfacePresentModeEXT mode =
             { VK_STRUCTURE_TYPE_SURFACE_PRESENT_MODE_EXT, NULL, pCreateInfo->presentMode };
 
-      uint32_t min_images = wsi_wl_surface_get_min_image_count(wsi_wl_surface->display, &mode);
+      uint32_t min_images = wsi_wl_surface_get_min_image_count(wsi_device, wsi_wl_surface->display, &mode);
       bool requires_image_count_bump = min_images == WSI_WL_BUMPED_NUM_IMAGES;
       if (requires_image_count_bump)
          num_images = MAX2(min_images, num_images);
@@ -3685,7 +3689,8 @@ fail:
 VkResult
 wsi_wl_init_wsi(struct wsi_device *wsi_device,
                 const VkAllocationCallbacks *alloc,
-                VkPhysicalDevice physical_device)
+                VkPhysicalDevice physical_device,
+                const struct driOptionCache *dri_options)
 {
    struct wsi_wayland *wsi;
    VkResult result;
@@ -3710,6 +3715,14 @@ wsi_wl_init_wsi(struct wsi_device *wsi_device,
    wsi->base.create_swapchain = wsi_wl_surface_create_swapchain;
 
    wsi_device->wsi[VK_ICD_WSI_PLATFORM_WAYLAND] = &wsi->base;
+
+   if (dri_options)
+   {
+      if (driCheckOption(dri_options, "vk_override_min_image_count", DRI_INT)) {
+         wsi_device->wayland.override_minImageCount =
+            driQueryOptioni(dri_options, "vk_override_min_image_count");
+      }
+   }
 
    return VK_SUCCESS;
 
