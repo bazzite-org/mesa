@@ -194,13 +194,9 @@ struct wsi_wl_surface {
    struct zwp_linux_dmabuf_feedback_v1 *wl_dmabuf_feedback;
    struct dmabuf_feedback dmabuf_feedback, pending_dmabuf_feedback;
 
-   struct wp_linux_drm_syncobj_surface_v1 *wl_syncobj_surface;
-
    struct vk_instance *instance;
 
    struct {
-      struct wp_color_management_surface_v1 *color_surface;
-      int color_surface_refcount;
       VkColorSpaceKHR colorspace;
       VkHdrMetadataEXT hdr_metadata;
       bool has_hdr_metadata;
@@ -214,6 +210,7 @@ struct wsi_wl_swapchain {
    struct wp_tearing_control_v1 *tearing_control;
    struct wp_fifo_v1 *fifo;
    struct wp_commit_timer_v1 *commit_timer;
+   struct wp_linux_drm_syncobj_surface_v1 *wl_syncobj_surface;
 
    struct wl_callback *frame;
 
@@ -256,6 +253,8 @@ struct wsi_wl_swapchain {
    } present_ids;
 
    struct {
+      struct wp_color_management_surface_v1 *color_surface;
+      int color_surface_refcount;
       VkColorSpaceKHR colorspace;
       VkHdrMetadataEXT hdr_metadata;
       bool has_hdr_metadata;
@@ -1154,22 +1153,23 @@ needs_color_surface(struct wsi_wl_display *display, VkColorSpaceKHR colorspace)
 }
 
 static void
-wsi_wl_surface_add_color_refcount(struct wsi_wl_surface *wsi_surface)
+wsi_wl_swapchain_add_color_refcount(struct wsi_wl_swapchain *wsi_swapchain)
 {
-   wsi_surface->color.color_surface_refcount++;
-   if (wsi_surface->color.color_surface_refcount == 1) {
-      wsi_surface->color.color_surface =
+   const struct wsi_wl_surface *wsi_surface = wsi_swapchain->wsi_wl_surface;
+   wsi_swapchain->color.color_surface_refcount++;
+   if (wsi_swapchain->color.color_surface_refcount == 1) {
+      wsi_swapchain->color.color_surface =
          wp_color_manager_v1_get_surface(wsi_surface->display->color_manager, wsi_surface->surface);
    }
 }
 
 static void
-wsi_wl_surface_remove_color_refcount(struct wsi_wl_surface *wsi_surface)
+wsi_wl_swapchain_remove_color_refcount(struct wsi_wl_swapchain *wsi_swapchain)
 {
-   wsi_surface->color.color_surface_refcount--;
-   if (wsi_surface->color.color_surface_refcount == 0) {
-      wp_color_management_surface_v1_destroy(wsi_surface->color.color_surface);
-      wsi_surface->color.color_surface = NULL;
+   wsi_swapchain->color.color_surface_refcount--;
+   if (wsi_swapchain->color.color_surface_refcount == 0) {
+      wp_color_management_surface_v1_destroy(wsi_swapchain->color.color_surface);
+      wsi_swapchain->color.color_surface = NULL;
    }
 }
 
@@ -1237,14 +1237,14 @@ wsi_wl_swapchain_update_colorspace(struct wsi_wl_swapchain *chain)
       }
    }
 
-   bool new_color_surface = !surface->color.color_surface;
+   bool new_color_surface = !chain->color.color_surface;
    bool needs_color_surface_new = needs_color_surface(display, chain->color.colorspace);
-   bool needs_color_surface_old = surface->color.color_surface &&
-      needs_color_surface(display, surface->color.colorspace);
-   if (!needs_color_surface_old && needs_color_surface_new) {
-      wsi_wl_surface_add_color_refcount(surface);
+   bool needs_color_surface_old = chain->color.color_surface &&
+      needs_color_surface(display, chain->color.colorspace);
+   if ((new_color_surface || !needs_color_surface_old) && needs_color_surface_new) {
+      wsi_wl_swapchain_add_color_refcount(chain);
    } else if (needs_color_surface_old && !needs_color_surface_new) {
-      wsi_wl_surface_remove_color_refcount(surface);
+      wsi_wl_swapchain_remove_color_refcount(chain);
    }
 
    struct wayland_hdr_metadata wayland_hdr_metadata = {
@@ -1350,7 +1350,7 @@ wsi_wl_swapchain_update_colorspace(struct wsi_wl_swapchain *chain)
       }
    }
 
-   wp_color_management_surface_v1_set_image_description(chain->wsi_wl_surface->color.color_surface,
+   wp_color_management_surface_v1_set_image_description(chain->color.color_surface,
                                                         image_desc,
                                                         WP_COLOR_MANAGER_V1_RENDER_INTENT_PERCEPTUAL);
    wp_image_description_v1_destroy(image_desc);
@@ -2026,17 +2026,11 @@ wsi_wl_surface_destroy(VkIcdSurfaceBase *icd_surface, VkInstance _instance,
    struct wsi_wl_surface *wsi_wl_surface =
       wl_container_of((VkIcdSurfaceWayland *)icd_surface, wsi_wl_surface, base);
 
-   if (wsi_wl_surface->wl_syncobj_surface)
-      wp_linux_drm_syncobj_surface_v1_destroy(wsi_wl_surface->wl_syncobj_surface);
-
    if (wsi_wl_surface->wl_dmabuf_feedback) {
       zwp_linux_dmabuf_feedback_v1_destroy(wsi_wl_surface->wl_dmabuf_feedback);
       dmabuf_feedback_fini(&wsi_wl_surface->dmabuf_feedback);
       dmabuf_feedback_fini(&wsi_wl_surface->pending_dmabuf_feedback);
    }
-
-   if (wsi_wl_surface->color.color_surface)
-      wp_color_management_surface_v1_destroy(wsi_wl_surface->color.color_surface);
 
    if (wsi_wl_surface->surface)
       wl_proxy_wrapper_destroy(wsi_wl_surface->surface);
@@ -2313,15 +2307,6 @@ static VkResult wsi_wl_surface_init(struct wsi_wl_surface *wsi_wl_surface,
 
       wl_display_roundtrip_queue(wsi_wl_surface->display->wl_display,
                                  wsi_wl_surface->display->queue);
-   }
-
-   if (wsi_wl_use_explicit_sync(wsi_wl_surface->display, wsi_device)) {
-      wsi_wl_surface->wl_syncobj_surface =
-         wp_linux_drm_syncobj_manager_v1_get_surface(wsi_wl_surface->display->wl_syncobj,
-                                                     wsi_wl_surface->surface);
-
-      if (!wsi_wl_surface->wl_syncobj_surface)
-         goto fail;
    }
 
    wsi_wl_surface_analytics_init(wsi_wl_surface, pAllocator);
@@ -3005,11 +2990,11 @@ wsi_wl_swapchain_queue_present(struct wsi_swapchain *wsi_chain,
       /* Incremented by signal in base queue_present. */
       uint64_t acquire_point = image->base.explicit_sync[WSI_ES_ACQUIRE].timeline;
       uint64_t release_point = image->base.explicit_sync[WSI_ES_RELEASE].timeline;
-      wp_linux_drm_syncobj_surface_v1_set_acquire_point(wsi_wl_surface->wl_syncobj_surface,
+      wp_linux_drm_syncobj_surface_v1_set_acquire_point(chain->wl_syncobj_surface,
                                                         image->wl_syncobj_timeline[WSI_ES_ACQUIRE],
                                                         (uint32_t)(acquire_point >> 32),
                                                         (uint32_t)(acquire_point & 0xffffffff));
-      wp_linux_drm_syncobj_surface_v1_set_release_point(wsi_wl_surface->wl_syncobj_surface,
+      wp_linux_drm_syncobj_surface_v1_set_release_point(chain->wl_syncobj_surface,
                                                         image->wl_syncobj_timeline[WSI_ES_RELEASE],
                                                         (uint32_t)(release_point >> 32),
                                                         (uint32_t)(release_point & 0xffffffff));
@@ -3352,9 +3337,10 @@ wsi_wl_swapchain_chain_free(struct wsi_wl_swapchain *chain,
       wl_callback_destroy(chain->frame);
    if (chain->tearing_control)
       wp_tearing_control_v1_destroy(chain->tearing_control);
-   if (needs_color_surface(wsi_wl_surface->display, chain->color.colorspace) &&
-       wsi_wl_surface->color.color_surface) {
-      wsi_wl_surface_remove_color_refcount(wsi_wl_surface);
+   if (chain->wl_syncobj_surface)
+      wp_linux_drm_syncobj_surface_v1_destroy(chain->wl_syncobj_surface);
+   if (chain->color.color_surface) {
+      wp_color_management_surface_v1_destroy(chain->color.color_surface);
    }
 
    /* Only unregister if we are the non-retired swapchain, or
@@ -3472,6 +3458,15 @@ wsi_wl_surface_create_swapchain(VkIcdSurfaceBase *icd_surface,
          wp_commit_timer_v1_destroy(old_chain->commit_timer);
          old_chain->commit_timer = NULL;
       }
+      if (old_chain->wl_syncobj_surface) {
+         wp_linux_drm_syncobj_surface_v1_destroy(old_chain->wl_syncobj_surface);
+         old_chain->wl_syncobj_surface = NULL;
+      }
+      if (old_chain->color.color_surface) {
+         wp_color_management_surface_v1_destroy(old_chain->color.color_surface);
+         old_chain->color.color_surface_refcount = 0;
+         old_chain->color.color_surface = NULL;
+      }
    }
 
    /* Take ownership of the wsi_wl_surface */
@@ -3518,6 +3513,15 @@ wsi_wl_surface_create_swapchain(VkIcdSurfaceBase *icd_surface,
       }
       wp_tearing_control_v1_set_presentation_hint(chain->tearing_control,
                                                           WP_TEARING_CONTROL_V1_PRESENTATION_HINT_ASYNC);
+   }
+
+   if (wsi_wl_use_explicit_sync(wsi_wl_surface->display, wsi_device)) {
+      chain->wl_syncobj_surface =
+         wp_linux_drm_syncobj_manager_v1_get_surface(wsi_wl_surface->display->wl_syncobj,
+                                                     wsi_wl_surface->surface);
+
+      if (!chain->wl_syncobj_surface)
+         goto fail;
    }
 
    chain->color.colorspace = pCreateInfo->imageColorSpace;
