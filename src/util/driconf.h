@@ -453,8 +453,8 @@
    DRI_CONF_OPT_B(vk_wsi_disable_unordered_submits, def, \
                   "Disable unordered WSI submits to workaround application synchronization bugs")
 
-#define DRI_CONF_VK_X11_OVERRIDE_MIN_IMAGE_COUNT(def) \
-   DRI_CONF_OPT_I(vk_x11_override_min_image_count, def, 0, 999, \
+#define DRI_CONF_VK_OVERRIDE_MIN_IMAGE_COUNT(def) \
+   DRI_CONF_OPT_I(vk_override_min_image_count, def, 0, 999, \
                   "Override the VkSurfaceCapabilitiesKHR::minImageCount (0 = no override)")
 
 #define DRI_CONF_VK_X11_STRICT_IMAGE_COUNT(def) \
